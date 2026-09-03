@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+research_*.json
+report_*.txt
+follow_list.txt
