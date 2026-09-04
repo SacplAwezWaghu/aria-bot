@@ -4,7 +4,7 @@
 // ============================================================
 
 const cron = require('node-cron');
-const { createPost, runFullResearch } = require('./instagram');
+const { sendPostForApproval, runFullResearch, sendResearchSummaryToAdmin } = require('./instagram');
 const { generatePostCaption } = require('./claude');
 
 function startScheduler() {
@@ -42,32 +42,31 @@ function startScheduler() {
 
   // ──────────────────────────────────────────────
   //  AUTO-POST: Every day at 10:00 AM
+  //  Generates TOMORROW's post and sends it to you for
+  //  approval today — gives you a full day to review or
+  //  request changes before it's actually due to go out.
   // ──────────────────────────────────────────────
   cron.schedule('0 10 * * *', async () => {
-    console.log('\n📅 Daily auto-post starting...');
+    console.log('\n📅 Generating tomorrow\'s post for your approval...');
 
-    const dayOfWeek = new Date().getDay();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const dayOfWeek = tomorrow.getDay();
     const topic = weeklyTopics[dayOfWeek];
+    const forDateLabel = tomorrow.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    console.log(`   For: ${forDateLabel}`);
     console.log(`   Topic: "${topic.slice(0, 60)}..."`);
 
     const caption = await generatePostCaption(topic);
 
     if (!caption) {
-      console.log('❌ Could not generate caption. Skipping today\'s post.');
+      console.log('❌ Could not generate caption. Skipping.');
       return;
     }
 
     const imageUrl = process.env.DEFAULT_POST_IMAGE_URL;
-
-    if (!imageUrl) {
-      console.log('\n📝 Today\'s generated post caption:');
-      console.log('─'.repeat(60));
-      console.log(caption);
-      console.log('─'.repeat(60));
-      console.log('💡 To auto-publish: set DEFAULT_POST_IMAGE_URL in your .env file');
-    } else {
-      await createPost(imageUrl, caption);
-    }
+    await sendPostForApproval(imageUrl, caption, topic, forDateLabel);
   });
 
   // ──────────────────────────────────────────────
@@ -77,8 +76,9 @@ function startScheduler() {
   // ──────────────────────────────────────────────
   cron.schedule('0 11 * * *', async () => {
     console.log('\n🔬 Daily client research starting...');
-    await runFullResearch();
-    console.log('✅ Research complete! Check report file for new potential clients.');
+    const { analysis } = await runFullResearch();
+    await sendResearchSummaryToAdmin(analysis);
+    console.log('✅ Research complete! Summary sent to you via DM.');
   });
 
   // ──────────────────────────────────────────────
