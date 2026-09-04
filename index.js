@@ -7,7 +7,7 @@
 require('dotenv').config(); // Load your .env credentials
 
 const express = require('express');
-const { handleIncomingDM } = require('./instagram');
+const { handleIncomingDM, approvePendingPost, rejectPendingPost, reviseAndResendPost } = require('./instagram');
 const { startScheduler } = require('./scheduler');
 
 const app = express();
@@ -97,6 +97,21 @@ app.post('/webhook', async (req, res) => {
         // Don't reply to your own messages
         if (senderId === process.env.IG_ACCOUNT_ID) {
           console.log('🔄 Skipping own message');
+          continue;
+        }
+
+        // If this message is from YOU (the admin), treat it as a
+        // post-approval command instead of a customer conversation
+        if (process.env.ADMIN_USER_ID && senderId === process.env.ADMIN_USER_ID) {
+          const command = messageText.trim().toUpperCase();
+          if (command === 'POST') {
+            await approvePendingPost();
+          } else if (command === 'SKIP') {
+            await rejectPendingPost();
+          } else {
+            // Anything else while a post is pending is treated as edit feedback
+            await reviseAndResendPost(messageText);
+          }
           continue;
         }
 
