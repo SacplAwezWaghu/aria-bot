@@ -82,6 +82,13 @@ app.post('/webhook', async (req, res) => {
         const senderId = event.sender?.id || event.from?.id;
         const messageText = event.message.text;
 
+        // Skip echoes — these are copies of messages YOUR account already sent,
+        // not new incoming messages. Without this check, Aria could reply to itself.
+        if (event.message.is_echo) {
+          console.log('🔄 Skipping echo of own sent message');
+          continue;
+        }
+
         if (!senderId) {
           console.log('⚠️ Could not find sender ID in event:', JSON.stringify(event));
           continue;
