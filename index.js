@@ -61,28 +61,69 @@ app.post('/webhook', async (req, res) => {
 
   const body = req.body;
 
-  // Only process Instagram events
-  if (body.object !== 'instagram') return;
+  // Log every incoming webhook for debugging
+  console.log('📨 Webhook received:', JSON.stringify(body, null, 2));
+
+  // Accept both 'instagram' and 'page' objects (Meta uses both)
+  if (body.object !== 'instagram' && body.object !== 'page') {
+    console.log('⚠️ Ignoring non-Instagram/page webhook object:', body.object);
+    return;
+  }
 
   for (const entry of body.entry || []) {
-    for (const event of entry.messaging || []) {
+
+    // Handle messaging events (DMs)
+    const messagingEvents = entry.messaging || entry.messages || [];
+
+    for (const event of messagingEvents) {
 
       // Someone sent your account a message
-      if (event.message?.text) {
-        const senderId = event.sender.id;
+      if (event.message && event.message.text) {
+        const senderId = event.sender?.id || event.from?.id;
         const messageText = event.message.text;
 
+        if (!senderId) {
+          console.log('⚠️ Could not find sender ID in event:', JSON.stringify(event));
+          continue;
+        }
+
         // Don't reply to your own messages
-        if (senderId === process.env.IG_ACCOUNT_ID) continue;
+        if (senderId === process.env.IG_ACCOUNT_ID) {
+          console.log('🔄 Skipping own message');
+          continue;
+        }
+
+        console.log(`💬 New DM from ${senderId}: "${messageText}"`);
 
         // Let Aria handle it
         await handleIncomingDM(senderId, messageText);
       }
 
-      // Someone liked your message
-      if (event.message?.attachments) {
-        console.log(`📎 Received attachment from ${event.sender.id}`);
-        await handleIncomingDM(event.sender.id, '[User sent a photo or attachment]');
+      // Someone sent an attachment
+      if (event.message && event.message.attachments) {
+        const senderId = event.sender?.id || event.from?.id;
+        if (senderId && senderId !== process.env.IG_ACCOUNT_ID) {
+          console.log(`📎 Received attachment from ${senderId}`);
+          await handleIncomingDM(senderId, '[User sent a photo or attachment]');
+        }
+      }
+    }
+
+    // Also check for 'changes' format (another Meta webhook format)
+    for (const change of entry.changes || []) {
+      if (change.field === 'messages') {
+        const value = change.value;
+        if (value && value.messages) {
+          for (const msg of value.messages) {
+            if (msg.type === 'text' && msg.text?.body) {
+              const senderId = msg.from;
+              if (senderId && senderId !== process.env.IG_ACCOUNT_ID) {
+                console.log(`💬 New DM (changes format) from ${senderId}: "${msg.text.body}"`);
+                await handleIncomingDM(senderId, msg.text.body);
+              }
+            }
+          }
+        }
       }
     }
   }
@@ -102,8 +143,7 @@ app.listen(PORT, () => {
   console.log(`║  Account:   ${(process.env.IG_ACCOUNT_ID || 'Check .env file')?.slice(0,18)}  ║`);
   console.log('╚═══════════════════════════════════════╝');
   console.log('');
-  console.log('📌 Share this bot\'s public URL with Instagram:');
-  console.log('   Run ngrok in a new terminal: ngrok http 3000');
+  console.log('📌 Aria is listening for Instagram DMs via webhook');
   console.log('');
 
   // Start the auto-scheduler
