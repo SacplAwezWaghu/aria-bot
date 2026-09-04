@@ -6,7 +6,9 @@
 const axios = require('axios');
 const { getAriaReply, analyzeProfiles } = require('./claude');
 
-const BASE = 'https://graph.facebook.com/v19.0';
+// FIXED: Instagram Login tokens (IGAA...) must use graph.instagram.com,
+// NOT graph.facebook.com (that's only for Facebook Login / Page tokens).
+const BASE = 'https://graph.instagram.com/v21.0';
 const TOKEN = () => process.env.ACCESS_TOKEN;
 const IG_ID = () => process.env.IG_ACCOUNT_ID;
 
