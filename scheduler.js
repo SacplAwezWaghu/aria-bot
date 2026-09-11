@@ -67,7 +67,7 @@ function startScheduler() {
 
     const imageUrl = process.env.DEFAULT_POST_IMAGE_URL;
     await sendPostForApproval(imageUrl, caption, topic, forDateLabel);
-  });
+  }, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
   //  RESEARCH: Every day at 11:00 AM
@@ -79,14 +79,14 @@ function startScheduler() {
     const { analysis } = await runFullResearch();
     await sendResearchSummaryToAdmin(analysis);
     console.log('✅ Research complete! Summary sent to you via DM.');
-  });
+  }, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
   //  STATUS CHECK: Every 6 hours
   // ──────────────────────────────────────────────
   cron.schedule('0 */6 * * *', () => {
     console.log(`\n💚 Aria is running — ${new Date().toLocaleString()}`);
-  });
+  }, { timezone: 'Asia/Kolkata' });
 }
 
 module.exports = { startScheduler };
