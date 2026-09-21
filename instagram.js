@@ -69,6 +69,75 @@ async function sendDM(recipientId, message) {
 //  FEATURE 2: POST TO YOUR INSTAGRAM
 // ─────────────────────────────────────────────
 
+// ─────────────────────────────────────────────
+//  FREE NEWS FETCHING — Google News RSS
+//  No API key, no cost, no approval process needed.
+// ─────────────────────────────────────────────
+async function fetchGoogleNews(query, maxItems = 8) {
+  try {
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=en-IN&gl=IN&ceid=IN:en`;
+    const res = await axios.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    const xml = res.data;
+
+    const items = [];
+    const itemBlocks = xml.split('<item>').slice(1); // first chunk is header, skip it
+
+    for (const block of itemBlocks.slice(0, maxItems)) {
+      const titleMatch = block.match(/<title>([\s\S]*?)<\/title>/);
+      const linkMatch = block.match(/<link>([\s\S]*?)<\/link>/);
+      const pubDateMatch = block.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
+      const sourceMatch = block.match(/<source[^>]*>([\s\S]*?)<\/source>/);
+
+      if (titleMatch) {
+        items.push({
+          title: titleMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim(),
+          link: linkMatch ? linkMatch[1].trim() : '',
+          pubDate: pubDateMatch ? pubDateMatch[1].trim() : '',
+          source: sourceMatch ? sourceMatch[1].replace(/<!\[CDATA\[|\]\]>/g, '').trim() : ''
+        });
+      }
+    }
+    return items;
+  } catch (err) {
+    console.error(`❌ Google News fetch error for "${query}":`, err.message);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
+//  FETCH A RELEVANT IMAGE AUTOMATICALLY
+//  Uses Pexels (free stock photos, no approval needed)
+//  so you never have to manually find/upload an image.
+// ─────────────────────────────────────────────
+async function fetchRelevantImage(searchTerm) {
+  const apiKey = process.env.PEXELS_API_KEY;
+  if (!apiKey) {
+    console.log('⚠️ PEXELS_API_KEY is not set — cannot auto-fetch an image.');
+    return null;
+  }
+
+  try {
+    const res = await axios.get('https://api.pexels.com/v1/search', {
+      headers: { Authorization: apiKey },
+      params: { query: searchTerm, orientation: 'landscape', per_page: 5 }
+    });
+
+    const photos = res.data?.photos || [];
+    if (photos.length === 0) {
+      console.log(`⚠️ No Pexels results for "${searchTerm}"`);
+      return null;
+    }
+
+    // Pick randomly among the top results so posts don't all reuse photo #1
+    const chosen = photos[Math.floor(Math.random() * photos.length)];
+    console.log(`🖼️ Using image for "${searchTerm}" (photo by ${chosen.photographer} on Pexels)`);
+    return chosen.src.large;
+  } catch (err) {
+    console.error('❌ Pexels image fetch error:', err.response?.data?.error || err.message);
+    return null;
+  }
+}
+
 // Publish a photo post with a caption
 // imageUrl must be a public internet URL (e.g. from your website or cloud storage)
 async function createPost(imageUrl, caption) {
@@ -196,6 +265,24 @@ async function rejectPendingPost() {
   await sendDM(ADMIN_ID(), '👍 Skipped — no post published today.');
 }
 
+// Send a long report as multiple DMs, split at paragraph breaks
+// so nothing gets cut off mid-sentence (Instagram limits message length)
+async function sendLongDM(recipientId, text) {
+  const MAX_CHUNK = 900;
+  const paragraphs = text.split('\n\n');
+  let chunk = '';
+
+  for (const para of paragraphs) {
+    if ((chunk + '\n\n' + para).length > MAX_CHUNK) {
+      if (chunk) await sendDM(recipientId, chunk.trim());
+      chunk = para;
+    } else {
+      chunk += (chunk ? '\n\n' : '') + para;
+    }
+  }
+  if (chunk) await sendDM(recipientId, chunk.trim());
+}
+
 // Send the daily research findings to you directly, so they're not
 // just sitting in a file on the server you can't easily access
 async function sendResearchSummaryToAdmin(analysis) {
@@ -203,8 +290,25 @@ async function sendResearchSummaryToAdmin(analysis) {
     console.log('⚠️ ADMIN_USER_ID is not set in .env — cannot send research summary.');
     return;
   }
-  const preview = analysis.length > 900 ? analysis.slice(0, 900) + '… (see server logs for the full report)' : analysis;
-  await sendDM(ADMIN_ID(), `🔬 Today's research summary:\n\n${preview}`);
+  await sendLongDM(ADMIN_ID(), `🔬 Today's research summary:\n\n${analysis}`);
+}
+
+// Send the weekly AEC industry news report
+async function sendIndustryReportToAdmin(report) {
+  if (!ADMIN_ID()) {
+    console.log('⚠️ ADMIN_USER_ID is not set — cannot send industry report.');
+    return;
+  }
+  await sendLongDM(ADMIN_ID(), `📰 Weekly AEC Industry Report:\n\n${report}`);
+}
+
+// Send the weekly lead-potential report
+async function sendLeadReportToAdmin(report) {
+  if (!ADMIN_ID()) {
+    console.log('⚠️ ADMIN_USER_ID is not set — cannot send lead report.');
+    return;
+  }
+  await sendLongDM(ADMIN_ID(), `🎯 Weekly Lead Potential Report:\n\n${report}`);
 }
 
 // ─────────────────────────────────────────────
@@ -341,9 +445,13 @@ module.exports = {
   runFullResearch,
   followUser,
   followResearchedProfiles,
+  fetchRelevantImage,
+  fetchGoogleNews,
   sendPostForApproval,
   approvePendingPost,
   rejectPendingPost,
   reviseAndResendPost,
-  sendResearchSummaryToAdmin
+  sendResearchSummaryToAdmin,
+  sendIndustryReportToAdmin,
+  sendLeadReportToAdmin
 };
