@@ -7,49 +7,88 @@ const cron = require('node-cron');
 const { createPost, fetchRelevantImage, runFullResearch, fetchGoogleNews, sendResearchSummaryToAdmin, sendIndustryReportToAdmin, sendLeadReportToAdmin } = require('./instagram');
 const { generatePostCaption, generateIndustryNewsReport, generateLeadPotentialReport } = require('./claude');
 
+// ──────────────────────────────────────────────
+//  POST TOPICS — 7-day rotation
+//  Each topic targets a different client type
+//  and positions you as the structural expert
+// ──────────────────────────────────────────────
+const weeklyTopics = [
+  // Sunday
+  'Why every architect needs a structural consultant from day one of design — and how it saves time, money and prevents project delays',
+
+  // Monday
+  'Common structural mistakes in construction projects that cost developers crores — and how to avoid them with proper structural planning',
+
+  // Tuesday
+  'Structural requirements for hospital buildings — why hospitals need specialized structural engineering for medical equipment loads, vibration control and safety',
+
+  // Wednesday
+  'How structural consultants make hotel construction successful — large span lobbies, rooftop pools, open floor plans and what it takes to build them safely',
+
+  // Thursday
+  'Structural audit — why you must get one before buying commercial or residential property, and what red flags to look for',
+
+  // Friday
+  'The role of a structural consultant in real estate development — from foundation design to final structure, how we protect your investment',
+
+  // Saturday
+  'Renovation projects and why a structural assessment is non-negotiable — what happens when you skip it and how to do it right'
+];
+
+// A short, specific search term per day, used to fetch a matching photo automatically
+const weeklyImageKeywords = [
+  'architect blueprint office',      // Sunday
+  'construction site building',      // Monday
+  'hospital building exterior',      // Tuesday
+  'hotel lobby architecture',        // Wednesday
+  'building inspection engineer',    // Thursday
+  'real estate construction crane',  // Friday
+  'building renovation construction' // Saturday
+];
+
+// ──────────────────────────────────────────────
+//  THE ACTUAL POSTING LOGIC — its own function so
+//  it can run on the 10 AM schedule AND be triggered
+//  manually on demand (e.g. via the /trigger-post URL).
+//  Each call picks a fresh caption + fresh image, so
+//  calling it twice in one day gives two different posts.
+// ──────────────────────────────────────────────
+async function runAutoPost() {
+  console.log('\n📅 Auto-posting...');
+
+  const dayOfWeek = new Date().getDay();
+  const topic = weeklyTopics[dayOfWeek];
+  const imageKeyword = weeklyImageKeywords[dayOfWeek];
+
+  console.log(`   Topic: "${topic.slice(0, 60)}..."`);
+
+  const caption = await generatePostCaption(topic);
+  if (!caption) {
+    console.log('❌ Could not generate caption. Skipping this post.');
+    return { success: false, reason: 'Could not generate caption' };
+  }
+
+  // Use a manually set image if you've configured one, otherwise fetch one automatically
+  const imageUrl = process.env.DEFAULT_POST_IMAGE_URL || await fetchRelevantImage(imageKeyword);
+
+  if (!imageUrl) {
+    console.log('❌ No image available (manual or auto-fetched). Skipping this post.');
+    return { success: false, reason: 'No image available' };
+  }
+
+  const postId = await createPost(imageUrl, caption);
+  if (postId) {
+    console.log(`✅ Post published! ID: ${postId}`);
+    return { success: true, postId };
+  }
+  return { success: false, reason: 'Instagram publish failed — check logs' };
+}
+
 function startScheduler() {
   console.log('\n⏰ Aria\'s auto-scheduler is running');
-  console.log('   • Auto-posts: Every day at 10:00 AM');
-  console.log('   • Research:   Every day at 11:00 AM');
-
-  // ──────────────────────────────────────────────
-  //  POST TOPICS — 7-day rotation
-  //  Each topic targets a different client type
-  //  and positions you as the structural expert
-  // ──────────────────────────────────────────────
-  const weeklyTopics = [
-    // Sunday
-    'Why every architect needs a structural consultant from day one of design — and how it saves time, money and prevents project delays',
-
-    // Monday
-    'Common structural mistakes in construction projects that cost developers crores — and how to avoid them with proper structural planning',
-
-    // Tuesday
-    'Structural requirements for hospital buildings — why hospitals need specialized structural engineering for medical equipment loads, vibration control and safety',
-
-    // Wednesday
-    'How structural consultants make hotel construction successful — large span lobbies, rooftop pools, open floor plans and what it takes to build them safely',
-
-    // Thursday
-    'Structural audit — why you must get one before buying commercial or residential property, and what red flags to look for',
-
-    // Friday
-    'The role of a structural consultant in real estate development — from foundation design to final structure, how we protect your investment',
-
-    // Saturday
-    'Renovation projects and why a structural assessment is non-negotiable — what happens when you skip it and how to do it right'
-  ];
-
-  // A short, specific search term per day, used to fetch a matching photo automatically
-  const weeklyImageKeywords = [
-    'architect blueprint office',      // Sunday
-    'construction site building',      // Monday
-    'hospital building exterior',      // Tuesday
-    'hotel lobby architecture',        // Wednesday
-    'building inspection engineer',    // Thursday
-    'real estate construction crane',  // Friday
-    'building renovation construction' // Saturday
-  ];
+  console.log('   • Auto-posts: Every day at 10:00 AM IST');
+  console.log('   • Research:   Every day at 11:00 AM IST');
+  console.log('   • Weekly reports: Every Monday at 9:00 AM IST');
 
   // ──────────────────────────────────────────────
   //  AUTO-POST: Every day at 10:00 AM IST
@@ -57,31 +96,7 @@ function startScheduler() {
   //  a matching image, and publishes it directly.
   //  No approval step.
   // ──────────────────────────────────────────────
-  cron.schedule('0 10 * * *', async () => {
-    console.log('\n📅 Auto-posting today...');
-
-    const dayOfWeek = new Date().getDay();
-    const topic = weeklyTopics[dayOfWeek];
-    const imageKeyword = weeklyImageKeywords[dayOfWeek];
-
-    console.log(`   Topic: "${topic.slice(0, 60)}..."`);
-
-    const caption = await generatePostCaption(topic);
-    if (!caption) {
-      console.log('❌ Could not generate caption. Skipping today\'s post.');
-      return;
-    }
-
-    // Use a manually set image if you've configured one, otherwise fetch one automatically
-    const imageUrl = process.env.DEFAULT_POST_IMAGE_URL || await fetchRelevantImage(imageKeyword);
-
-    if (!imageUrl) {
-      console.log('❌ No image available (manual or auto-fetched). Skipping today\'s post.');
-      return;
-    }
-
-    await createPost(imageUrl, caption);
-  }, { timezone: 'Asia/Kolkata' });
+  cron.schedule('0 10 * * *', runAutoPost, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
   //  RESEARCH: Every day at 11:00 AM
@@ -152,4 +167,4 @@ function startScheduler() {
   }, { timezone: 'Asia/Kolkata' });
 }
 
-module.exports = { startScheduler };
+module.exports = { startScheduler, runAutoPost };
