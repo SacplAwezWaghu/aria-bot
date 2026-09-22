@@ -148,6 +148,15 @@ async function createPost(imageUrl, caption) {
     return null;
   }
 
+  // Safety net: Instagram rejects captions over 2,200 characters.
+  // Even though we ask Claude to stay well under this, trim here too
+  // so a post never fails outright just because of length.
+  const MAX_CAPTION_LENGTH = 2000;
+  if (caption && caption.length > MAX_CAPTION_LENGTH) {
+    console.log(`⚠️ Caption was ${caption.length} chars — trimming to fit Instagram's limit.`);
+    caption = caption.slice(0, MAX_CAPTION_LENGTH).replace(/\s+\S*$/, '') + '…';
+  }
+
   // Step 1: Upload image to Instagram (creates a staging container)
   console.log('   Step 1/2: Uploading image...');
   const container = await api('POST', `/${IG_ID()}/media`, {
