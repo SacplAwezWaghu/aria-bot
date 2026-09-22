@@ -8,7 +8,7 @@ require('dotenv').config(); // Load your .env credentials
 
 const express = require('express');
 const { handleIncomingDM } = require('./instagram');
-const { startScheduler, runAutoPost } = require('./scheduler');
+const { startScheduler, runAutoPost, runProjectSpotlightPost } = require('./scheduler');
 
 const app = express();
 app.use(express.json());
@@ -44,6 +44,17 @@ app.get('/trigger-post', async (req, res) => {
   const result = await runAutoPost();
   if (result.success) {
     res.send(`✅ Post published successfully! Post ID: ${result.postId}`);
+  } else {
+    res.send(`❌ Post did not go through: ${result.reason}. Check Render logs for details.`);
+  }
+});
+
+// Manually trigger a project spotlight post (visit this URL to test)
+app.get('/trigger-spotlight', async (req, res) => {
+  console.log('\n🖱️ Manual spotlight post triggered via /trigger-spotlight');
+  const result = await runProjectSpotlightPost();
+  if (result.success) {
+    res.send(`✅ Spotlight post published successfully! Post ID: ${result.postId}`);
   } else {
     res.send(`❌ Post did not go through: ${result.reason}. Check Render logs for details.`);
   }
