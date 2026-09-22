@@ -100,15 +100,16 @@ How to actually drive engagement:
 - Give one genuinely useful, specific insight or fact — something a developer or architect would actually want to save for later, not vague advice.
 - End with a question or prompt that's easy and natural to respond to (e.g. asking their experience, opinion, or which option they'd choose) — not a generic "DM us!"
 - Include a soft, natural mention that SACPL handles this — not a hard sales pitch.
-- Add 15-20 hashtags mixing broad (#StructuralEngineering, #RealEstateIndia) and specific (#PMCIndia, #EPCProjects, #StructuralAudit) so it reaches the right professional audience.
+- Add 12-15 hashtags mixing broad (#StructuralEngineering, #RealEstateIndia) and specific (#PMCIndia, #EPCProjects, #StructuralAudit) so it reaches the right professional audience.
 - Use line breaks for easy mobile reading.
-- Sound like a genuine expert sharing real knowledge, not a marketing template.`;
+- Sound like a genuine expert sharing real knowledge, not a marketing template.
+- HARD LIMIT: the entire caption, including every hashtag, must be under 2,000 characters total. Instagram rejects anything over 2,200 — stay well under that. Keep the main text concise and tight, not padded.`;
 
 async function generatePostCaption(topic) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 700,
+      max_tokens: 500,
       system: POST_CAPTION_SYSTEM_PROMPT,
       messages: [{
         role: 'user',
@@ -128,7 +129,7 @@ async function revisePostCaption(topic, previousCaption, feedback) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 700,
+      max_tokens: 500,
       system: POST_CAPTION_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: `Write an Instagram post for a structural consultancy firm about this topic: ${topic}` },
