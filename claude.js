@@ -242,4 +242,41 @@ If none of the headlines look like genuine leads, say so plainly rather than for
   }
 }
 
-module.exports = { getAriaReply, generatePostCaption, revisePostCaption, analyzeProfiles, generateIndustryNewsReport, generateLeadPotentialReport };
+// ─────────────────────────────────────────────
+//  6. PROJECT SPOTLIGHT CAPTION
+//     Real project, real facts, told as a story —
+//     not generic education content. Only uses the
+//     facts given in the `project` object — never
+//     invents details beyond what's provided.
+// ─────────────────────────────────────────────
+async function generateProjectSpotlightCaption(project) {
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 500,
+      system: `You are writing an Instagram post for SACPL, a 50+ year old structural consultancy in India, spotlighting one of the firm's own real completed or ongoing projects.
+
+Your audience: architects, developers, PMCs, EPC companies.
+
+Your only source of facts is the project information given to you in the user message. Use ONLY those facts — never invent additional details, numbers, names, or claims beyond what's provided. If the facts given are limited, write a shorter, honest post rather than padding it with invented specifics.
+
+Tone and approach:
+- Tell it like a story, not a brochure listing. What was the challenge or achievement? What made this project interesting from a structural engineering standpoint?
+- Open with a hook specific to this project — not a generic "Check out our latest project!"
+- Sound genuinely proud but not boastful — like an engineer sharing real work, not a marketing team.
+- End with a light, natural call to action (inviting comments, questions, or DMs) — not a hard pitch.
+- Add 10-15 relevant hashtags including the project type and location if known.
+- HARD LIMIT: entire caption including hashtags must be under 2,000 characters.`,
+      messages: [{
+        role: 'user',
+        content: `Write an Instagram spotlight post about this real SACPL project:\n\n${project.facts}`
+      }]
+    });
+    return response.content[0].text;
+  } catch (err) {
+    console.error('❌ Project spotlight caption error:', err.message);
+    return null;
+  }
+}
+
+module.exports = { getAriaReply, generatePostCaption, revisePostCaption, analyzeProfiles, generateIndustryNewsReport, generateLeadPotentialReport, generateProjectSpotlightCaption };
