@@ -148,6 +148,17 @@ async function createPost(imageUrl, caption) {
     return null;
   }
 
+  // Safety net: strip any markdown that slipped through despite the prompt
+  // instructions — Instagram doesn't render markdown, so **bold** or # headers
+  // would otherwise show up as literal, ugly symbols on the real post.
+  if (caption) {
+    caption = caption
+      .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold** -> bold
+      .replace(/\*(.+?)\*/g, '$1')       // *italic* -> italic
+      .replace(/^#{1,6}\s+/gm, '')       // # Heading -> Heading
+      .replace(/^[-*]\s+/gm, '');        // - bullet / * bullet -> plain line
+  }
+
   // Safety net: Instagram rejects captions over 2,200 characters.
   // Even though we ask Claude to stay well under this, trim here too
   // so a post never fails outright just because of length.
