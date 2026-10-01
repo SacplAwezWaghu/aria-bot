@@ -5,7 +5,7 @@
 
 const cron = require('node-cron');
 const { createPost, fetchRelevantImage, runFullResearch, fetchGoogleNews, sendResearchSummaryToAdmin, sendIndustryReportToAdmin, sendLeadReportToAdmin } = require('./instagram');
-const { generatePostCaption, generateIndustryNewsReport, generateLeadPotentialReport, generateProjectSpotlightCaption } = require('./claude');
+const { generatePostCaption, generateIndustryNewsReport, generateLeadPotentialReport, generateProjectSpotlightCaption, generateFreshTopic } = require('./claude');
 
 // ──────────────────────────────────────────────
 //  PROJECT SPOTLIGHT LIBRARY
@@ -92,59 +92,40 @@ async function runProjectSpotlightPost() {
 }
 
 // ──────────────────────────────────────────────
-//  POST TOPICS — 7-day rotation
-//  Each topic targets a different client type
-//  and positions you as the structural expert
+//  TOPIC MEMORY — tracks recently used topics so
+//  generateFreshTopic can guarantee each new one is
+//  genuinely different, not a reworded repeat. With
+//  2 posts/day, this remembers roughly the last 2-3
+//  months of topics before the oldest ones roll off.
 // ──────────────────────────────────────────────
-const weeklyTopics = [
-  // Sunday
-  'Why every architect needs a structural consultant from day one of design — and how it saves time, money and prevents project delays',
-
-  // Monday
-  'Common structural mistakes in construction projects that cost developers crores — and how to avoid them with proper structural planning',
-
-  // Tuesday
-  'Structural requirements for hospital buildings — why hospitals need specialized structural engineering for medical equipment loads, vibration control and safety',
-
-  // Wednesday
-  'How structural consultants make hotel construction successful — large span lobbies, rooftop pools, open floor plans and what it takes to build them safely',
-
-  // Thursday
-  'Structural audit — why you must get one before buying commercial or residential property, and what red flags to look for',
-
-  // Friday
-  'The role of a structural consultant in real estate development — from foundation design to final structure, how we protect your investment',
-
-  // Saturday
-  'Renovation projects and why a structural assessment is non-negotiable — what happens when you skip it and how to do it right'
-];
-
-// A short, specific search term per day, used to fetch a matching photo automatically
-const weeklyImageKeywords = [
-  'architect blueprint office',      // Sunday
-  'construction site building',      // Monday
-  'hospital building exterior',      // Tuesday
-  'hotel lobby architecture',        // Wednesday
-  'building inspection engineer',    // Thursday
-  'real estate construction crane',  // Friday
-  'building renovation construction' // Saturday
-];
+const recentTopics = [];
+const MAX_RECENT_TOPICS_TRACKED = 150;
 
 // ──────────────────────────────────────────────
 //  THE ACTUAL POSTING LOGIC — its own function so
-//  it can run on the 10 AM schedule AND be triggered
-//  manually on demand (e.g. via the /trigger-post URL).
-//  Each call picks a fresh caption + fresh image, so
-//  calling it twice in one day gives two different posts.
+//  it can run on both the 10 AM and 6 PM schedules,
+//  AND be triggered manually (e.g. via /trigger-post).
+//  Each call generates a brand new topic (never one
+//  already used recently) plus a matching, non-repeated
+//  image.
 // ──────────────────────────────────────────────
 async function runAutoPost() {
   console.log('\n📅 Auto-posting...');
 
-  const dayOfWeek = new Date().getDay();
-  const topic = weeklyTopics[dayOfWeek];
-  const imageKeyword = weeklyImageKeywords[dayOfWeek];
+  const topicResult = await generateFreshTopic(recentTopics);
+  if (!topicResult || !topicResult.topic) {
+    console.log('❌ Could not generate a fresh topic. Skipping this post.');
+    return { success: false, reason: 'Could not generate topic' };
+  }
 
-  console.log(`   Topic: "${topic.slice(0, 60)}..."`);
+  const { topic, imageKeyword } = topicResult;
+  console.log(`   Topic: "${topic.slice(0, 70)}..."`);
+
+  // Remember this topic so it's never repeated going forward
+  recentTopics.push(topic);
+  if (recentTopics.length > MAX_RECENT_TOPICS_TRACKED) {
+    recentTopics.shift(); // forget the oldest once we're tracking plenty
+  }
 
   const caption = await generatePostCaption(topic);
   if (!caption) {
@@ -170,85 +151,67 @@ async function runAutoPost() {
 
 function startScheduler() {
   console.log('\n⏰ Aria\'s auto-scheduler is running');
-  console.log('   • Auto-posts: Every day at 10:00 AM IST');
-  console.log('   • Research:   Every day at 11:00 AM IST');
-  console.log('   • Weekly reports: Every Monday at 9:00 AM IST');
+  console.log('   • Auto-posts: Every day at 10:00 AM and 6:00 PM IST (2 posts/day, always fresh topics)');
+  console.log('   • Reports: disabled (zero Claude API cost from scheduled reports)');
 
   // ──────────────────────────────────────────────
   //  AUTO-POST: Every day at 10:00 AM IST
   //  Fully automatic — generates the caption, fetches
-  //  a matching image, and publishes it directly.
-  //  No approval step.
+  //  a matching image (never repeating a recent one),
+  //  and publishes it directly. No approval step.
+  //  This is the ONLY scheduled post — 1/day, as requested.
   // ──────────────────────────────────────────────
   cron.schedule('0 10 * * *', runAutoPost, { timezone: 'Asia/Kolkata' });
 
-  // ──────────────────────────────────────────────
-  //  PROJECT SPOTLIGHT POST: Every day at 5:00 PM IST
-  //  Second daily post — a real SACPL project, told
-  //  as a story, cycling through the spotlight library.
-  // ──────────────────────────────────────────────
-  cron.schedule('0 17 * * *', runProjectSpotlightPost, { timezone: 'Asia/Kolkata' });
+  // Second daily post, same logic, 6 PM IST — a fresh topic
+  // is generated independently each time, so this is never
+  // the same subject as the 10 AM post.
+  cron.schedule('0 18 * * *', runAutoPost, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
-  //  RESEARCH: Every day at 11:00 AM
-  //  Finds architects, developers, hotel owners,
-  //  hospital builders, construction companies
+  //  DISABLED — Project spotlight post (used to run
+  //  5 PM daily). Turned off to get back to 1 post/day,
+  //  and because its small 6-image library was the likely
+  //  source of repeated images. Still callable manually via
+  //  /trigger-spotlight if you ever want to post one by hand.
   // ──────────────────────────────────────────────
-  cron.schedule('0 11 * * *', async () => {
-    console.log('\n🔬 Daily client research starting...');
-    const { analysis } = await runFullResearch();
-    await sendResearchSummaryToAdmin(analysis);
-    console.log('✅ Research complete! Summary sent to you via DM.');
-  }, { timezone: 'Asia/Kolkata' });
+  // cron.schedule('0 17 * * *', runProjectSpotlightPost, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
-  //  WEEKLY REPORTS: Every Monday at 9:00 AM IST
-  //  1. AEC industry news
-  //  2. Lead potential (from real headlines only)
-  //  100% free — uses Google News RSS + normal Claude
-  //  text generation, no paid search tool.
+  //  DISABLED — Daily research summary (used to run
+  //  11 AM daily) and the AEC industry / lead reports
+  //  (used to run Mon/Wed/Fri 9 AM). Both called Claude's
+  //  API, which is never truly free — turned off entirely
+  //  so this feature costs nothing. Say the word if you
+  //  want either one back, at any frequency.
   // ──────────────────────────────────────────────
-  cron.schedule('0 9 * * 1', async () => {
-    console.log('\n📰 Fetching real news for weekly reports (free — Google News RSS)...');
+  // cron.schedule('0 11 * * *', async () => {
+  //   console.log('\n🔬 Daily client research starting...');
+  //   const { analysis } = await runFullResearch();
+  //   await sendResearchSummaryToAdmin(analysis);
+  //   console.log('✅ Research complete! Summary sent to you via DM.');
+  // }, { timezone: 'Asia/Kolkata' });
 
-    const queries = [
-      'real estate construction India',
-      'architect developer project India',
-      'AEC industry India news',
-      'structural engineering India'
-    ];
-
-    let allNews = [];
-    for (const q of queries) {
-      const items = await fetchGoogleNews(q, 8);
-      allNews.push(...items);
-    }
-
-    // Remove duplicate headlines across the different searches
-    const uniqueNews = [...new Map(allNews.map(n => [n.title, n])).values()];
-    console.log(`   Found ${uniqueNews.length} unique headlines`);
-
-    if (uniqueNews.length === 0) {
-      console.log('❌ No news found this week — skipping reports.');
-      return;
-    }
-
-    const industryReport = await generateIndustryNewsReport(uniqueNews);
-    if (industryReport) {
-      await sendIndustryReportToAdmin(industryReport);
-      console.log('✅ Industry report sent.');
-    } else {
-      console.log('❌ Could not generate industry report.');
-    }
-
-    const leadReport = await generateLeadPotentialReport(uniqueNews);
-    if (leadReport) {
-      await sendLeadReportToAdmin(leadReport);
-      console.log('✅ Lead report sent.');
-    } else {
-      console.log('❌ Could not generate lead report.');
-    }
-  }, { timezone: 'Asia/Kolkata' });
+  // cron.schedule('0 9 * * 1,3,5', async () => {
+  //   console.log('\n📰 Fetching real news for reports (free — Google News RSS)...');
+  //   const queries = [
+  //     'real estate construction India',
+  //     'architect developer project India',
+  //     'AEC industry India news',
+  //     'structural engineering India'
+  //   ];
+  //   let allNews = [];
+  //   for (const q of queries) {
+  //     const items = await fetchGoogleNews(q, 8);
+  //     allNews.push(...items);
+  //   }
+  //   const uniqueNews = [...new Map(allNews.map(n => [n.title, n])).values()];
+  //   if (uniqueNews.length === 0) return;
+  //   const industryReport = await generateIndustryNewsReport(uniqueNews);
+  //   if (industryReport) await sendIndustryReportToAdmin(industryReport);
+  //   const leadReport = await generateLeadPotentialReport(uniqueNews);
+  //   if (leadReport) await sendLeadReportToAdmin(leadReport);
+  // }, { timezone: 'Asia/Kolkata' });
 
   // ──────────────────────────────────────────────
   //  STATUS CHECK: Every 6 hours
