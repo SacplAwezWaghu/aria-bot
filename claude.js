@@ -100,8 +100,8 @@ Plain text only. Instagram does not render any formatting at all.
 - NEVER use emoji as bullet points (no 🔴, 📍, ✅ etc. used as list markers).
 - Write in flowing sentences and short paragraphs, like a real caption a person typed on their phone. A line break between thoughts is fine and encouraged — a formatted list is not.
 
-CRITICAL LENGTH RULE:
-The caption body (before hashtags) must be under 150 words. Not "around" 150 — under it. Nobody reads a long caption on Instagram. Say ONE thing well, not five things briefly. Cut anything that isn't essential to the single point you're making.
+CRITICAL LENGTH RULE — this is the most important rule here:
+The caption body (before hashtags) must be 50-70 words. Not under 50, not over 70 — land inside that window. Count as you write. That's roughly 3-4 short sentences — think of the length of a text message to a colleague, not a blog post. Say ONE thing, in the fewest words that still land it.
 
 How to actually write it:
 - Open with a real hook — a specific pain point, a surprising fact, or a blunt statement that stops the scroll. One line, not a paragraph.
@@ -116,7 +116,7 @@ async function generatePostCaption(topic) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 350,
+      max_tokens: 180,
       system: POST_CAPTION_SYSTEM_PROMPT,
       messages: [{
         role: 'user',
@@ -136,7 +136,7 @@ async function revisePostCaption(topic, previousCaption, feedback) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 350,
+      max_tokens: 180,
       system: POST_CAPTION_SYSTEM_PROMPT,
       messages: [
         { role: 'user', content: `Write an Instagram post for a structural consultancy firm about this topic: ${topic}` },
@@ -260,7 +260,7 @@ async function generateProjectSpotlightCaption(project) {
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 350,
+      max_tokens: 180,
       system: `You are a genuine person who works at SACPL, a 50+ year old structural consultancy in India, posting on Instagram about one of the firm's own real projects. You're not a marketing team — you're someone who was close to the work, sharing it because it's genuinely interesting.
 
 Your audience: architects, developers, PMCs, EPC companies.
@@ -273,8 +273,8 @@ Plain text only. Instagram renders no formatting at all.
 - NEVER use markdown, bullet dashes, numbered lists, or emoji as list markers.
 - Write in flowing sentences and short paragraphs, the way a person actually types a caption — not a formatted brief.
 
-CRITICAL LENGTH RULE:
-The caption body (before hashtags) must be under 150 words. Pick the single most interesting angle on this project — the challenge, the achievement, the scale — and tell just that, well. Don't try to cover everything.
+CRITICAL LENGTH RULE — this is the most important rule here:
+The caption body (before hashtags) must be 50-70 words. Not under 50, not over 70 — land inside that window. Count as you write. Pick the single most interesting angle on this project — the challenge, the achievement, the scale — and say just that, in the fewest words that land it.
 
 Tone:
 - Open with a hook specific to this project — not "Check out our latest project!"
@@ -296,4 +296,54 @@ If it reads like a content template or something no real person would actually t
   }
 }
 
-module.exports = { getAriaReply, generatePostCaption, revisePostCaption, analyzeProfiles, generateIndustryNewsReport, generateLeadPotentialReport, generateProjectSpotlightCaption };
+// ─────────────────────────────────────────────
+//  7. FRESH TOPIC GENERATOR
+//     Generates one new post topic + matching image
+//     search term, explicitly avoiding anything in the
+//     "recently covered" list — this is what makes
+//     genuine no-repeat topics possible with 2 posts/day.
+// ─────────────────────────────────────────────
+async function generateFreshTopic(recentTopics) {
+  try {
+    const avoidList = recentTopics.length > 0
+      ? recentTopics.map(t => `- ${t}`).join('\n')
+      : '(none yet — this is the first post)';
+
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 120,
+      system: `You generate one fresh Instagram post topic for SACPL, a structural consultancy in India. Audience: architects, developers, PMCs, EPC companies.
+
+Give ONE specific angle — a mistake, technique, risk, achievement, myth, comparison, or cost issue related to structural engineering, construction, or real estate development in India. It must be a genuinely different subject or angle from everything in the "already covered" list below — not a reworded version of one of them.
+
+Also give a short 2-4 word image search term that would find a fitting stock photo for it.
+
+Already covered recently — do not repeat or closely rephrase any of these:
+${avoidList}
+
+Respond in exactly this format and nothing else:
+TOPIC: <one sentence describing the topic/angle>
+IMAGE: <2-4 word image search term>`,
+      messages: [{ role: 'user', content: 'Give me a fresh topic.' }]
+    });
+
+    const text = response.content[0].text;
+    const topicMatch = text.match(/TOPIC:\s*(.+)/i);
+    const imageMatch = text.match(/IMAGE:\s*(.+)/i);
+
+    if (!topicMatch) {
+      console.error('❌ Could not parse topic from response:', text);
+      return null;
+    }
+
+    return {
+      topic: topicMatch[1].trim(),
+      imageKeyword: imageMatch ? imageMatch[1].trim() : 'construction building India'
+    };
+  } catch (err) {
+    console.error('❌ Topic generation error:', err.message);
+    return null;
+  }
+}
+
+module.exports = { getAriaReply, generatePostCaption, revisePostCaption, analyzeProfiles, generateIndustryNewsReport, generateLeadPotentialReport, generateProjectSpotlightCaption, generateFreshTopic };
