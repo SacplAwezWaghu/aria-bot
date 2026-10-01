@@ -108,7 +108,16 @@ async function fetchGoogleNews(query, maxItems = 8) {
 //  FETCH A RELEVANT IMAGE AUTOMATICALLY
 //  Uses Pexels (free stock photos, no approval needed)
 //  so you never have to manually find/upload an image.
+//
+//  Tracks recently-used photo IDs (in memory) so the
+//  same photo never gets picked again while it's "recent"
+//  — this is what was causing repeated images before,
+//  since only the top 5 results were ever considered for
+//  the same weekly search term.
 // ─────────────────────────────────────────────
+const recentlyUsedPhotoIds = [];
+const MAX_RECENT_PHOTOS_TRACKED = 200; // remembers the last 200 photos used, across all search terms
+
 async function fetchRelevantImage(searchTerm) {
   const apiKey = process.env.PEXELS_API_KEY;
   if (!apiKey) {
@@ -119,7 +128,7 @@ async function fetchRelevantImage(searchTerm) {
   try {
     const res = await axios.get('https://api.pexels.com/v1/search', {
       headers: { Authorization: apiKey },
-      params: { query: searchTerm, orientation: 'landscape', per_page: 5 }
+      params: { query: searchTerm, orientation: 'landscape', per_page: 80 } // 80 is Pexels' max per request — widest possible pool each search
     });
 
     const photos = res.data?.photos || [];
@@ -128,9 +137,25 @@ async function fetchRelevantImage(searchTerm) {
       return null;
     }
 
-    // Pick randomly among the top results so posts don't all reuse photo #1
-    const chosen = photos[Math.floor(Math.random() * photos.length)];
-    console.log(`🖼️ Using image for "${searchTerm}" (photo by ${chosen.photographer} on Pexels)`);
+    // Filter out anything used recently
+    let candidates = photos.filter(p => !recentlyUsedPhotoIds.includes(p.id));
+
+    // If every result has been used recently (small result pool exhausted),
+    // fall back to the full list rather than failing to post at all.
+    if (candidates.length === 0) {
+      console.log(`⚠️ All ${photos.length} results for "${searchTerm}" were used recently — allowing a repeat this time.`);
+      candidates = photos;
+    }
+
+    const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+
+    // Remember this photo so it isn't picked again for a while
+    recentlyUsedPhotoIds.push(chosen.id);
+    if (recentlyUsedPhotoIds.length > MAX_RECENT_PHOTOS_TRACKED) {
+      recentlyUsedPhotoIds.shift(); // drop the oldest tracked photo
+    }
+
+    console.log(`🖼️ Using image for "${searchTerm}" (photo by ${chosen.photographer} on Pexels, id ${chosen.id})`);
     return chosen.src.large;
   } catch (err) {
     console.error('❌ Pexels image fetch error:', err.response?.data?.error || err.message);
